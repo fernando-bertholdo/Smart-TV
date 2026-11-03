@@ -65,6 +65,11 @@ const SMART_SEARCH_DEBOUNCE_MS = 600;
 const SMART_SEARCH_LIMIT = 20;
 const NO_SMART_RESULTS = {items: [], seerr: []};
 
+// Opening a result takes the search screen off and it's built again on the way
+// back, so the query, its results and the card that was opened are kept here to
+// come back to, the way Library keeps returnTo. Leaving any other way drops it.
+let searchReturn = null;
+
 const VoiceIcon = () => (
 	<svg viewBox="0 0 24 24" fill="currentColor" className={css.voiceIcon}>
 		<path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z" />
@@ -123,19 +128,24 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 	const {isEnabled: seerrEnabled, api: seerrApi, displayName: seerrName, pluginInfo} = useSeerr();
 	const smartSearchOn = !!settings.useMoonfinPlugin && pluginInfo?.smartSearchEnabled === true;
 
-	const [query, setQuery] = useState('');
+	// Read once per mount and cleared after the first focus, so it's used only once.
+	const restoreRef = useRef(undefined);
+	if (restoreRef.current === undefined) restoreRef.current = searchReturn;
+	const restore = restoreRef.current;
+
+	const [query, setQuery] = useState(() => restore?.query || '');
 	const [isLoading, setIsLoading] = useState(false);
-	const [groups, setGroups] = useState([]);
-	const [seerrResults, setSeerrResults] = useState([]);
-	const [gameResults, setGameResults] = useState([]);
-	const [smartResults, setSmartResults] = useState(NO_SMART_RESULTS);
-	const [activeTab, setActiveTab] = useState('all');
+	const [groups, setGroups] = useState(() => restore?.groups || []);
+	const [seerrResults, setSeerrResults] = useState(() => restore?.seerrResults || []);
+	const [gameResults, setGameResults] = useState(() => restore?.gameResults || []);
+	const [smartResults, setSmartResults] = useState(() => restore?.smartResults || NO_SMART_RESULTS);
+	const [activeTab, setActiveTab] = useState(() => restore?.activeTab || 'all');
 	const [searchInputFocused, setSearchInputFocused] = useState(false);
 	const searchInputRef = useRef(null);
 	// The row in focus goes by id rather than position, so a row that arrives late
 	// above it doesn't move the mounted window off it.
-	const [activeRowId, setActiveRowId] = useState(null);
-	const [visibleCardCounts, setVisibleCardCounts] = useState({});
+	const [activeRowId, setActiveRowId] = useState(() => restore?.activeRowId || null);
+	const [visibleCardCounts, setVisibleCardCounts] = useState(() => restore?.visibleCardCounts || {});
 	const [recentSearches, saveRecentSearches] = useStorage(RECENT_SEARCHES_KEY, []);
 
 	// doSearch records into this list, so it reads the current value through a
@@ -151,7 +161,7 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 	const smartRequestIdRef = useRef(0);
 	const remoteSearchRef = useRef(remoteSearch);
 	remoteSearchRef.current = remoteSearch;
-	const lastResultNamesRef = useRef([]);
+	const lastResultNamesRef = useRef(restore?.resultNames || []);
 	const scrollerRefs = useRef({});
 	const gameLibrariesRef = useRef([]);
 	const hasLiveTvRef = useRef(false);
@@ -451,7 +461,12 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 	}, [allRows]);
 
 	useEffect(() => {
-		setTimeout(() => Spotlight.focus('search-input'), 100);
+		const back = restoreRef.current;
+		searchReturn = null;
+		setTimeout(() => {
+			if (back?.focusId && Spotlight.focus(back.focusId)) return;
+			Spotlight.focus('search-input');
+		}, 100);
 	}, []);
 
 	// Keeps people that answer after the screen closed from landing on it.
@@ -573,6 +588,22 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 		});
 	}, []);
 
+	// Called as a result is opened, with the card that held focus.
+	const noteReturn = useCallback((card) => {
+		searchReturn = {
+			query,
+			groups,
+			seerrResults,
+			gameResults,
+			smartResults,
+			activeTab,
+			activeRowId,
+			visibleCardCounts,
+			resultNames: lastResultNamesRef.current,
+			focusId: card?.getAttribute?.('data-spotlight-id') || null
+		};
+	}, [query, groups, seerrResults, gameResults, smartResults, activeTab, activeRowId, visibleCardCounts]);
+
 	const handleSelectJellyfin = useCallback((item) => {
 		if (item.Type === 'Person') {
 			onSelectPerson?.(item);
@@ -595,6 +626,7 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 	// instead of a closure per card.
 	const handleCardClick = useCallback((e) => {
 		const {kind, id, mediaType} = e.currentTarget.dataset;
+		noteReturn(e.currentTarget);
 		if (kind === 'seerr') {
 			// The route the discover and browse rows take. It opens the real library
 			// item when Seerr already has one for the title, and the screen that can
@@ -605,9 +637,12 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 		}
 		const libraryItem = jellyfinItemById(id);
 		if (libraryItem) handleSelectJellyfin(libraryItem);
-	}, [jellyfinItemById, seerrResults, smartResults, onSelectSeerrItem, handleSelectJellyfin]);
+	}, [jellyfinItemById, seerrResults, smartResults, onSelectSeerrItem, handleSelectJellyfin, noteReturn]);
 
-	const handleGameSelect = useCallback((game) => onSelectGame?.(game._library, game), [onSelectGame]);
+	const handleGameSelect = useCallback((game) => {
+		noteReturn(Spotlight.getCurrent());
+		onSelectGame?.(game._library, game);
+	}, [onSelectGame, noteReturn]);
 
 	// Holding OK on a library result opens its menu. A Seerr or game result has none.
 	const itemAtCard = useCallback((target) => {
