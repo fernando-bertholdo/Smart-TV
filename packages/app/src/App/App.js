@@ -27,6 +27,7 @@ import {isBackKey, KEYS} from '../utils/keys';
 import {drawsStage} from '../views/Details/stage/stageRules';
 import {QUICK_LOOK_ID} from '../views/Details/quickLook/quickLookRules';
 import {applyPerfTier} from '../utils/perfTier';
+import {forgetSearchReturn} from '../utils/searchReturn';
 import {isLiveTvChannel, isLiveTvLibrary} from '../utils/liveTvLibrary';
 import {OLED_TUNING} from '../utils/oledMode';
 import {isTizen} from '../platform';
@@ -1388,7 +1389,9 @@ const AppContent = (props) => {
 		showPanel(PANELS.LIVETV);
 	}, [showPanel]);
 
+	// Search opened from the nav starts empty. Only Back from a result brings the last one back.
 	const handleOpenSearch = useCallback(() => {
+		forgetSearchReturn();
 		navigateTo(PANELS.SEARCH);
 	}, [navigateTo]);
 
@@ -1620,6 +1623,7 @@ const AppContent = (props) => {
 		wakeScreensaver,
 		goToSearch: (search) => {
 			clearForRemote();
+			forgetSearchReturn();
 			setRemoteSearch(search);
 			// The player has already returned to its previous panel. Do not
 			// put the now-closed player into Search's back history.

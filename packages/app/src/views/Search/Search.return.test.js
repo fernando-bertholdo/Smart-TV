@@ -1,6 +1,7 @@
 import {act, fireEvent, render, screen} from '@testing-library/react';
 import Spotlight from '@enact/spotlight';
 import Search from './Search';
+import {forgetSearchReturn} from '../../utils/searchReturn';
 
 const mockApi = {getLibraries: jest.fn(), search: jest.fn(), searchPeople: jest.fn()};
 const mockAuth = {api: mockApi, serverUrl: 'http://server', hasMultipleServers: false};
@@ -113,4 +114,19 @@ test('when the opened card can\'t take focus, the field gets it', async () => {
 	render(<Search onSelectItem={jest.fn()} />);
 	await settle();
 	expect(Spotlight.focus).toHaveBeenLastCalledWith('search-input');
+});
+
+test('opening Search from the nav after a result was opened starts empty', async () => {
+	const {unmount: leave} = render(<Search onSelectItem={jest.fn()} />);
+	await typeQuery('alien');
+	fireEvent.click(screen.getByText('Alien'));
+	leave();
+
+	// What the app does for the nav's Search button and the remote app.
+	forgetSearchReturn();
+	render(<Search onSelectItem={jest.fn()} />);
+	await settle();
+	expect(screen.getByRole('textbox').value).toBe('');
+	expect(screen.queryByText('Alien')).toBeNull();
+	expect(Spotlight.focus).toHaveBeenCalledWith('search-input');
 });

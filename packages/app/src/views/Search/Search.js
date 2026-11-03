@@ -6,6 +6,7 @@ import Spotlight from '@enact/spotlight';
 import {isPaused} from '@enact/spotlight/Pause';
 import {useAuth} from '../../context/AuthContext';
 import {keepFocusInView, pointerHover} from '../../utils/focusScroll';
+import {forgetSearchReturn, keepSearchReturn, peekSearchReturn} from '../../utils/searchReturn';
 import {isKidsMode} from '../../utils/kidsMode';
 import {withoutBlockedItems} from '../../services/parentalControls';
 import {useSettings} from '../../context/SettingsContext';
@@ -64,11 +65,6 @@ const ROW_SCROLL_MARGIN = 50;
 const SMART_SEARCH_DEBOUNCE_MS = 600;
 const SMART_SEARCH_LIMIT = 20;
 const NO_SMART_RESULTS = {items: [], seerr: []};
-
-// Opening a result takes the search screen off and it's built again on the way
-// back, so the query, its results and the card that was opened are kept here to
-// come back to, the way Library keeps returnTo. Leaving any other way drops it.
-let searchReturn = null;
 
 const VoiceIcon = () => (
 	<svg viewBox="0 0 24 24" fill="currentColor" className={css.voiceIcon}>
@@ -130,7 +126,7 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 
 	// Read once per mount and cleared after the first focus, so it's used only once.
 	const restoreRef = useRef(undefined);
-	if (restoreRef.current === undefined) restoreRef.current = searchReturn;
+	if (restoreRef.current === undefined) restoreRef.current = peekSearchReturn();
 	const restore = restoreRef.current;
 
 	const [query, setQuery] = useState(() => restore?.query || '');
@@ -462,7 +458,7 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 
 	useEffect(() => {
 		const back = restoreRef.current;
-		searchReturn = null;
+		forgetSearchReturn();
 		setTimeout(() => {
 			if (back?.focusId && Spotlight.focus(back.focusId)) return;
 			Spotlight.focus('search-input');
@@ -590,7 +586,7 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 
 	// Called as a result is opened, with the card that held focus.
 	const noteReturn = useCallback((card) => {
-		searchReturn = {
+		keepSearchReturn({
 			query,
 			groups,
 			seerrResults,
@@ -601,7 +597,7 @@ const Search = ({onSelectItem, onSelectSeerrItem, onSelectPerson, onSelectGame, 
 			visibleCardCounts,
 			resultNames: lastResultNamesRef.current,
 			focusId: card?.getAttribute?.('data-spotlight-id') || null
-		};
+		});
 	}, [query, groups, seerrResults, gameResults, smartResults, activeTab, activeRowId, visibleCardCounts]);
 
 	const handleSelectJellyfin = useCallback((item) => {
