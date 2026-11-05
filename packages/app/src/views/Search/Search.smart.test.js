@@ -99,3 +99,22 @@ test('an answer for an older query is dropped', async () => {
 	expect(screen.getByText('Liar Liar')).toBeTruthy();
 	expect(screen.queryByText('The Mask')).toBeNull();
 });
+
+test('coming back from a smart result brings the smart rows back without asking again', async () => {
+	const onSelectItem = jest.fn();
+	const {unmount: leave} = render(<Search onSelectItem={onSelectItem} />);
+	await typeQuery('jim carey mask');
+	fireEvent.click(screen.getByText('The Mask'));
+	expect(onSelectItem).toHaveBeenCalledWith(smartAnswer.Items[0]);
+	leave();
+
+	mockApi.smartSearch.mockClear();
+	render(<Search onSelectItem={onSelectItem} />);
+	await act(async () => { jest.advanceTimersByTime(700); });
+	expect(screen.getByRole('textbox').value).toBe('jim carey mask');
+	expect(screen.getByText('Smart Search')).toBeTruthy();
+	expect(screen.getByText('The Mask')).toBeTruthy();
+	expect(screen.getByText('Smart Search on Seerr')).toBeTruthy();
+	expect(screen.getByText('Jumanji')).toBeTruthy();
+	expect(mockApi.smartSearch).not.toHaveBeenCalled();
+});
